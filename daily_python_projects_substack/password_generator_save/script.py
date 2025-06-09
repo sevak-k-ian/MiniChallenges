@@ -1,15 +1,13 @@
 from nicegui import app, ui
 from datetime import datetime
-import secrets, random, string, csv, os
-
-# TODOS
-# TODO Ask Google to comment everything
-# TODO Push changes
+from pathlib import Path
+import secrets, random, string, csv
 
 # --LAYOUT & ELEMENTS VARIABLES--
 generated_pwd_label: ui.label = None
 
 # --STORING STATE DATA VARIABLES--
+# Dict to store at highest scope data used by functions
 state: dict[str, str, str, int, tuple] = {
     "generated_pwd": None,
     "today": None,
@@ -18,34 +16,20 @@ state: dict[str, str, str, int, tuple] = {
 }
 
 # --STORING CONSTANT DATA VARIABLES--
+SCRIPT_DIR = Path(__file__).parent  # Find the file in current dir
+CSV_FILE_PATH = SCRIPT_DIR / "passwords.csv"  # Find the csv file
 MIN_PWD_LENGTH = 8
-CHAR_LOWER = string.ascii_lowercase
+AUTHORIZED_CHARS = string.ascii_letters + string.digits + string.punctuation  # Set up all the available chars
+# for my generators
+CHAR_LOWER = string.ascii_lowercase  # List of every lowercase char
 CHAR_UPPER = string.ascii_uppercase
 CHAR_DIGITS = string.digits
 CHAR_PUNCTUATION = string.punctuation
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_FILE_PATH = f"{SCRIPT_DIR}/passwords.csv"
-
-
-# Enter the desired password length
-def get_desired_length() -> int:
-    try:
-        desired_length: int = int(pwd_length_input.value)
-        return desired_length
-    except ValueError:
-        None
-
-
-def account_software_used() -> str:
-    user_input: str = account_spec_input.value
-    return user_input
 
 
 def random_pwd_generator(length: int) -> str:
-    # 1. Set up all the available chars for my generators
-    authorized_chars = string.ascii_letters + string.digits + string.punctuation
-
-    # 2. Ensure that at least there will be one char of each kind
+    """Generates a random password ensuring character diversity."""
+    # List of each kind char
     compulsory_char_diversity: list = [
         secrets.choice(CHAR_LOWER),
         secrets.choice(CHAR_UPPER),
@@ -53,26 +37,53 @@ def random_pwd_generator(length: int) -> str:
         secrets.choice(CHAR_PUNCTUATION)
     ]
 
-    # 3. Fill the password with compulsory chars + the rest of available characters by randoms chars chosen from authorized chars
+    # Fill the password with compulsory chars + the rest of available characters by randoms chars chosen
+    # from authorized chars
     if length:
-        password: list = []
-        for item in compulsory_char_diversity:
-            password.append(item)
-        for i in range(length - 4):
-            password.append(secrets.choice(authorized_chars))
+        password_list = list(compulsory_char_diversity)  # Start with required chars
+        remaining_length = length - len(password_list)
+        password_list.extend([secrets.choice(AUTHORIZED_CHARS) for _ in range(
+            remaining_length)])  # Append the initial list with an other list of other random chars
 
-        # 4. Shuffle the list of chosen chars to be sure that the compulsory chars are not everytime at start
-        random.shuffle(password)
+        # Shuffle the list of chosen chars to be sure that the compulsory chars are not everytime at start
+        random.shuffle(password_list)
 
-        # 5. Join the list of chars and return the generated pwd
-        shuffled_pwd: str = "".join(password)
+        # Join the list of chars and return the generated pwd
+        shuffled_pwd: str = "".join(password_list)
         return shuffled_pwd
 
 
-def save_data_to_csv(today: str, account: str, pwd: str) -> None:
+def handle_generate_pwd_btn() -> None:
+    """Handler for the 'Generate' button click event."""
+
+    # Test if length input value by user is an int, or not
+    try:
+        desired_length: int = int(pwd_length_input.value)
+        state["desired_length"] = desired_length
+    except (ValueError, TypeError):
+        generated_pwd_output.set_text(f"⚠️ Provide an integer")
+        # Keep the general scope dict with None values to prevent save_to_csv() function to work properly
+        state["desired_length"] = None
+        state["generated_pwd"] = None
+
+    if state["desired_length"] <= MIN_PWD_LENGTH:
+        generated_pwd_output.set_text(f"⚠️ Provide a number > {MIN_PWD_LENGTH}")
+        # Keep the general scope dict "state" with None values to prevent save_to_csv() function to work properly
+        state["generated_pwd"] = None
+    else:
+        # Fill up the "state" dict with the correct values
+        state["today"]: str = datetime.today().strftime('%Y-%m-%d')
+        state["account_name"]: str = account_spec_input.value
+        state["generated_pwd"] = random_pwd_generator(state["desired_length"])
+        generated_pwd_output.set_text(f"{state["generated_pwd"]}")
+
+
+def save_to_csv(today: str, account: str, pwd: str) -> None:
+    """Saves the provided credentials to a CSV file."""
     data_to_save: tuple = (today, account, pwd)
 
-    if any(map(lambda x: x is None, data_to_save)):
+    # Prevent saving to csv if one or several values are None in "state" dict
+    if None in data_to_save:
         generated_pwd_output.set_text(f"🛑 Can't save invalid data")
     else:
         try:
@@ -92,29 +103,25 @@ def save_data_to_csv(today: str, account: str, pwd: str) -> None:
             generated_pwd_output.set_text(f"🛑An error occurred: {e}")
 
 
-def handle_generate_pwd_btn() -> None:
-    # Update var that stores GUI generated data
-    state["today"]: str = datetime.today().strftime('%Y-%m-%d')
-    state["account_name"]: str = account_software_used()
-    state["desired_length"] = get_desired_length()
-
-    # Logic
-    if not isinstance(state["desired_length"], int):
-        generated_pwd_output.set_text(f"⚠️ Provide an integer")
-    elif state["desired_length"] <= MIN_PWD_LENGTH:
-        generated_pwd_output.set_text(f"⚠️ Provide a number > {MIN_PWD_LENGTH}")
-    else:
-        state["generated_pwd"] = random_pwd_generator(state["desired_length"])
-        generated_pwd_output.set_text(f"{state["generated_pwd"]}")
+def handle_save_btn() -> None:
+    return save_to_csv(
+        today=state["today"],
+        account=state["account_name"],
+        pwd=state["generated_pwd"])
 
 
 def shutdown_app() -> None:
+    """Displays a goodbye message and shuts down the app."""
     goodbye_box = ui.dialog()
     with goodbye_box:
         with ui.card().classes("text-xl font-bold"):
             ui.label("Bye bye!")
     goodbye_box.open()
     app.shutdown()
+
+
+def close_app() -> None:
+    return shutdown_app()
 
 
 # --GUI DISPLAY--
@@ -133,9 +140,9 @@ with ui.column().classes("w-full h-screen flex-col justify-center items-center")
             generated_pwd_output: ui.label = ui.label()
         with ui.card().classes("no-shadow no-border"):
             save_pwd_info_btn = ui.button("Save to file",
-                                          on_click=lambda: save_data_to_csv(today=state["today"],
-                                                                            account=state["account_name"],
-                                                                            pwd=state["generated_pwd"]))
-            close_app_btn = ui.button(text="Close app", on_click=lambda: shutdown_app()).props("color=red stretch")
+                                          on_click=handle_save_btn)  # Here it is a var name (not a function call)
+            # because the handle_save_btn() function (see before) calls a function that will return data and store
+            # it in that variable
+            close_app_btn = ui.button(text="Close app", on_click=close_app).props("color=red stretch")
 
 ui.run()
