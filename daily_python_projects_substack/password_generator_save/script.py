@@ -1,22 +1,30 @@
 from nicegui import app, ui
+from datetime import datetime
+import secrets, random, string, csv, os
 
 # TODOS
-# TODO Ask Google to improve code performance and logic without adding for the moment comments
 # TODO Ask Google to comment everything
+# TODO Push changes
 
 # --LAYOUT & ELEMENTS VARIABLES--
-pwd_length_label: ui.label = None
-pwd_length_input: ui.input = None
-account_spec_label: ui.label = None
-account_spec_input: ui.input = None
-generate_pwd_btn: ui.button = None
 generated_pwd_label: ui.label = None
-save_pwd_info_btn: ui.button = None
 
-# --STORING DATA VARIABLES--
-generated_pwd: str = None
-data_to_save_to_csv: tuple = None
-csv_abs_path: str = "/Users/sevakkulinkian/PycharmProjects/MiniChallenges/daily_python_projects_substack/password_generator_save/passwords.csv"
+# --STORING STATE DATA VARIABLES--
+state: dict[str, str, str, int, tuple] = {
+    "generated_pwd": None,
+    "today": None,
+    "account_name": None,
+    "desired_length": None,
+}
+
+# --STORING CONSTANT DATA VARIABLES--
+MIN_PWD_LENGTH = 8
+CHAR_LOWER = string.ascii_lowercase
+CHAR_UPPER = string.ascii_uppercase
+CHAR_DIGITS = string.digits
+CHAR_PUNCTUATION = string.punctuation
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_FILE_PATH = f"{SCRIPT_DIR}/passwords.csv"
 
 
 # Enter the desired password length
@@ -25,17 +33,12 @@ def get_desired_length() -> int:
         desired_length: int = int(pwd_length_input.value)
         return desired_length
     except ValueError:
-        print("⚠️Not an integer provided!")
+        None
 
 
 def account_software_used() -> str:
     user_input: str = account_spec_input.value
     return user_input
-
-
-import secrets
-import random
-import string
 
 
 def random_pwd_generator(length: int) -> str:
@@ -44,13 +47,13 @@ def random_pwd_generator(length: int) -> str:
 
     # 2. Ensure that at least there will be one char of each kind
     compulsory_char_diversity: list = [
-        secrets.choice(string.ascii_lowercase),
-        secrets.choice(string.ascii_uppercase),
-        secrets.choice(string.punctuation),
-        secrets.choice(string.digits)
+        secrets.choice(CHAR_LOWER),
+        secrets.choice(CHAR_UPPER),
+        secrets.choice(CHAR_DIGITS),
+        secrets.choice(CHAR_PUNCTUATION)
     ]
 
-    # 3. Fill the password with compulsory chars + the rest of available characters by randoms chars choosen from authorized chars
+    # 3. Fill the password with compulsory chars + the rest of available characters by randoms chars chosen from authorized chars
     if length:
         password: list = []
         for item in compulsory_char_diversity:
@@ -66,46 +69,43 @@ def random_pwd_generator(length: int) -> str:
         return shuffled_pwd
 
 
-import csv
+def save_data_to_csv(today: str, account: str, pwd: str) -> None:
+    data_to_save: tuple = (today, account, pwd)
 
+    if any(map(lambda x: x is None, data_to_save)):
+        generated_pwd_output.set_text(f"🛑 Can't save invalid data")
+    else:
+        try:
+            #  'a' ensures that you add to the end of the file instead of overwriting it.
+            #  newline='' prevents blank rows from being added between your data.
+            with open(CSV_FILE_PATH, 'a', newline='') as csvfile:
+                # Create a csv writer object
+                csv_writer = csv.writer(csvfile)
 
-def save_data_to_csv(data_to_save: tuple) -> None:
-    try:
-        #  'a' ensures that you add to the end of the file instead of overwriting it.
-        #  newline='' prevents blank rows from being added between your data.
-        with open(csv_abs_path, 'a', newline='') as csvfile:
-            # Create a csv writer object
-            csv_writer = csv.writer(csvfile)
+                # Write the new row of data from your tuple
+                csv_writer.writerow(data_to_save)
+            generated_pwd_output.set_text(f"✅ Successfully save to file")
 
-            # Write the new row of data from your tuple
-            csv_writer.writerow(data_to_save)
-        print("Successfully added new data to passwords.csv")
-
-    except FileNotFoundError:
-        print(f"Error: The file was not found at {csv_abs_path}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-
-from datetime import datetime
+        except FileNotFoundError:
+            generated_pwd_output.set_text(f"🛑Error: The file was not found at {CSV_FILE_PATH}")
+        except Exception as e:
+            generated_pwd_output.set_text(f"🛑An error occurred: {e}")
 
 
 def handle_generate_pwd_btn() -> None:
-    # Generated data to store then in csv file
-    global generated_pwd
-    today: str = datetime.today().strftime('%Y-%m-%d')
-    account: str = account_software_used()
-    length = get_desired_length()
-    if not isinstance(length, int):
+    # Update var that stores GUI generated data
+    state["today"]: str = datetime.today().strftime('%Y-%m-%d')
+    state["account_name"]: str = account_software_used()
+    state["desired_length"] = get_desired_length()
+
+    # Logic
+    if not isinstance(state["desired_length"], int):
         generated_pwd_output.set_text(f"⚠️ Provide an integer")
-    elif length <= 8:
-        generated_pwd_output.set_text(f"⚠️ Provide a number > 8")
+    elif state["desired_length"] <= MIN_PWD_LENGTH:
+        generated_pwd_output.set_text(f"⚠️ Provide a number > {MIN_PWD_LENGTH}")
     else:
-        generated_pwd = random_pwd_generator(length)
-        generated_pwd_output.set_text(f"{generated_pwd}")
-        global data_to_save_to_csv
-        data_to_save_to_csv = (today, account, generated_pwd)
-        return data_to_save_to_csv
+        state["generated_pwd"] = random_pwd_generator(state["desired_length"])
+        generated_pwd_output.set_text(f"{state["generated_pwd"]}")
 
 
 def shutdown_app() -> None:
@@ -133,7 +133,9 @@ with ui.column().classes("w-full h-screen flex-col justify-center items-center")
             generated_pwd_output: ui.label = ui.label()
         with ui.card().classes("no-shadow no-border"):
             save_pwd_info_btn = ui.button("Save to file",
-                                          on_click=lambda: save_data_to_csv(data_to_save=data_to_save_to_csv))
+                                          on_click=lambda: save_data_to_csv(today=state["today"],
+                                                                            account=state["account_name"],
+                                                                            pwd=state["generated_pwd"]))
             close_app_btn = ui.button(text="Close app", on_click=lambda: shutdown_app()).props("color=red stretch")
 
 ui.run()
