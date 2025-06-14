@@ -7,11 +7,6 @@ from pathlib import Path
 import secrets, random, string, csv
 from manipulate_gsheet import get_sheets_service, append_data, modify_data, delete_row, read_data
 
-###############################################
-# TODOS
-###############################################
-# TODO Implement the "gsheet current data" update advice from gemini
-
 # --LAYOUT & ELEMENTS VARIABLES--
 generated_pwd_label: ui.label = None
 
