@@ -1,10 +1,23 @@
+###############################################
+# EXTERNAL LIB AND MODULES
+###############################################
 from nicegui import app, ui
 from datetime import datetime
 from pathlib import Path
 import secrets, random, string, csv
+from manipulate_gsheet import get_sheets_service, append_data, modify_data, delete_row, read_data
+
+###############################################
+# TODOS
+###############################################
+# TODO Create a space in the GUI to search for an account and return nicely the password and creation date
 
 # --LAYOUT & ELEMENTS VARIABLES--
 generated_pwd_label: ui.label = None
+
+###############################################
+# GENERAL SCOPE VAR AND CONSTANT VAR
+###############################################
 
 # --STORING STATE DATA VARIABLES--
 # Dict to store at highest scope data used by functions
@@ -15,18 +28,31 @@ state: dict[str, str, str, int, tuple] = {
     "desired_length": None,
 }
 
-# --STORING CONSTANT DATA VARIABLES--
-SCRIPT_DIR = Path(__file__).parent  # Find the file in current dir
-CSV_FILE_PATH = SCRIPT_DIR / "passwords.csv"  # Find the csv file
+# --CONSTANT VARIABLES FOR RANDOM CHARS GENERATION--
 MIN_PWD_LENGTH = 8
 AUTHORIZED_CHARS = string.ascii_letters + string.digits + string.punctuation  # Set up all the available chars
-# for my generators
 CHAR_LOWER = string.ascii_lowercase  # List of every lowercase char
 CHAR_UPPER = string.ascii_uppercase
 CHAR_DIGITS = string.digits
 CHAR_PUNCTUATION = string.punctuation
 
+# --CONSTANT VARIABLES FOR CSV FILE ACCESS--
+SCRIPT_DIR = Path(__file__).parent  # Find the file in current dir
+CSV_FILE_PATH = SCRIPT_DIR / "passwords.csv"  # Find the csv file
 
+# --CONSTANT VARIABLES FOR GOOGLE SHEET ACCESS--
+SPREADSHEET_ID: str = "1E7YogxyTbP4kENkD22nNk59xZBIzSe6tnh0jd2FxUhY"
+SHEET_NAME: str = "Sheet1"
+CELLS_RANGE: str = "Sheet1!A1:C"
+SERVICE = get_sheets_service()
+CURRENT_GSHEET_DATA: list = read_data(service=SERVICE, range_name=CELLS_RANGE,
+                                      spreadsheet_id=SPREADSHEET_ID)
+print(CURRENT_GSHEET_DATA)
+
+###############################################
+# FUNCTIONS
+###############################################
+# --CLI/DATA FUNCTIONS --
 def random_pwd_generator(length: int) -> str:
     """Generates a random password ensuring character diversity."""
     # List of each kind char
@@ -53,31 +79,7 @@ def random_pwd_generator(length: int) -> str:
         return shuffled_pwd
 
 
-def handle_generate_pwd_btn() -> None:
-    """Handler for the 'Generate' button click event."""
-
-    # Test if length input value by user is an int, or not
-    try:
-        desired_length: int = int(pwd_length_input.value)
-        state["desired_length"] = desired_length
-    except (ValueError, TypeError):
-        generated_pwd_output.set_text(f"⚠️ Provide an integer")
-        # Keep the general scope dict with None values to prevent save_to_csv() function to work properly
-        state["desired_length"] = None
-        state["generated_pwd"] = None
-
-    if state["desired_length"] <= MIN_PWD_LENGTH:
-        generated_pwd_output.set_text(f"⚠️ Provide a number > {MIN_PWD_LENGTH}")
-        # Keep the general scope dict "state" with None values to prevent save_to_csv() function to work properly
-        state["generated_pwd"] = None
-    else:
-        # Fill up the "state" dict with the correct values
-        state["today"]: str = datetime.today().strftime('%Y-%m-%d')
-        state["account_name"]: str = account_spec_input.value
-        state["generated_pwd"] = random_pwd_generator(state["desired_length"])
-        generated_pwd_output.set_text(f"{state["generated_pwd"]}")
-
-
+# --CSV FILE RELATED FUNCTIONS -- (archives)
 def save_to_csv(today: str, account: str, pwd: str) -> None:
     """Saves the provided credentials to a CSV file."""
     data_to_save: tuple = (today, account, pwd)
@@ -103,13 +105,49 @@ def save_to_csv(today: str, account: str, pwd: str) -> None:
             generated_pwd_output.set_text(f"🛑An error occurred: {e}")
 
 
-def handle_save_btn() -> None:
+# --GUI HANDLING FUNCTIONS --
+def handle_generate_pwd_btn() -> None:
+    """Handler for the 'Generate' button click event."""
+
+    # Test if length input value by user is an int, or not
+    try:
+        desired_length: int = int(pwd_length_input.value)
+        state["desired_length"] = desired_length
+    except (ValueError, TypeError):
+        generated_pwd_output.set_text(f"⚠️ Provide an integer")
+        # Keep the general scope dict with None values to prevent save_to_csv() function to work properly
+        state["desired_length"] = None
+        state["generated_pwd"] = None
+
+    if state["desired_length"] <= MIN_PWD_LENGTH:
+        generated_pwd_output.set_text(f"⚠️ Provide a number > {MIN_PWD_LENGTH}")
+        # Keep the general scope dict "state" with None values to prevent save_to_csv() function to work properly
+        state["generated_pwd"] = None
+    else:
+        # Fill up the "state" dict with the correct values
+        state["today"]: str = datetime.today().strftime('%Y-%m-%d')
+        state["account_name"]: str = account_spec_input.value
+        state["generated_pwd"] = random_pwd_generator(state["desired_length"])
+        generated_pwd_output.set_text(f"{state["generated_pwd"]}")
+        print(state["today"],state["account_name"],state["generated_pwd"] )
+
+
+def handle_save_btn_csv_version() -> None:
     return save_to_csv(
         today=state["today"],
         account=state["account_name"],
         pwd=state["generated_pwd"])
 
 
+def handle_save_btn_gsheet_version():
+    today = state["today"]
+    account = state["account_name"]
+    pwd = state["generated_pwd"]
+    data_to_save: list = [[today, account, pwd]] # The API expects a list of list, or a list of rows
+    append_data(service=SERVICE, spreadsheet_id=SPREADSHEET_ID, range_name=SHEET_NAME, data=data_to_save)
+
+
+# --GENERAL GUI FUNCTIONS --
 def shutdown_app() -> None:
     """Displays a goodbye message and shuts down the app."""
     goodbye_box = ui.dialog()
@@ -124,7 +162,9 @@ def close_app() -> None:
     return shutdown_app()
 
 
-# --GUI DISPLAY--
+###############################################
+# GUI LAYOUT AND RUN
+###############################################
 with ui.column().classes("w-full h-screen flex-col justify-center items-center"):
     with ui.column().classes(
             "border-2 border-solid border-blue-500 rounded-md  text-lg px-10 py-10 justify-center items-center"):
@@ -140,7 +180,10 @@ with ui.column().classes("w-full h-screen flex-col justify-center items-center")
             generated_pwd_output: ui.label = ui.label()
         with ui.card().classes("no-shadow no-border"):
             save_pwd_info_btn = ui.button("Save to file",
-                                          on_click=handle_save_btn)  # Here it is a var name (not a function call)
+                                          on_click=handle_save_btn_gsheet_version)
+            # ARCHIVE csv saving
+            # save_pwd_info_btn = ui.button("Save to file",
+            # on_click=handle_save_btn_csv_version)  # Here it is a var name (not a function call)
             # because the handle_save_btn() function (see before) calls a function that will return data and store
             # it in that variable
             close_app_btn = ui.button(text="Close app", on_click=close_app).props("color=red stretch")
