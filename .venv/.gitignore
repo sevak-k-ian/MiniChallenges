@@ -1,0 +1,12 @@
+# General Python ignores
+__pycache__/
+*.pyc
+.venv/
+
+# Google OAuth files - ignore these files in ANY sub-directory
+**/credentials.json
+**/token.json
+
+# Specific log or data files
+*.log
+*.csv
