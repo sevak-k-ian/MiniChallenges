@@ -28,11 +28,8 @@ def num_counter(list_of_nums: list, num_to_count: int) -> str:
 # Print a sentence where the result is correctly displayed
 def main_prog() -> None:
     user_list: list = get_list_of_nums()
-    print(user_list, type(user_list))
     num_to_find: int = what_num_to_count()
-    print(num_to_find, type(num_to_find))
     occurrence: int = num_counter(list_of_nums=user_list, num_to_count=num_to_find)
-    print(occurrence, type(occurrence))
     print(f"The num {num_to_find} appears {occurrence} times in the list you provided")
 
 
